@@ -1,0 +1,17 @@
+[package]
+name = "kafka-delaymq-core"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+kafka-delaymq-kafka = { workspace = true }
+kafka-delaymq-storage = { workspace = true }
+kafka-timing-wheel = { workspace = true }
+
+anyhow = { workspace = true }
+clamber-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

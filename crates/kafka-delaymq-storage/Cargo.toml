@@ -1,0 +1,13 @@
+[package]
+name = "kafka-delaymq-storage"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+rocksdb = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }

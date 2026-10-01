@@ -1,0 +1,31 @@
+[workspace]
+resolver = "3"
+
+members = [
+    "crates/*",
+    #  "service/*", 
+    #  "tools/*"
+]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+kafka-delaymq-core = { path = "crates/kafka-delaymq-core" }
+kafka-delaymq-kafka = { path = "crates/kafka-delaymq-kafka" }
+kafka-delaymq-storage = { path = "crates/kafka-delaymq-storage" }
+kafka-timing-wheel = { path = "crates/kafka-timing-wheel" }
+
+anyhow = "1.0.104"
+serde = { version = "1.0.229", features = ["derive"] }
+thiserror = "2.0.21"
+tokio = { version = "1.53.1", features = ["full"] }
+tracing = "0.1.44"
+tracing-appender = "0.2.5"
+tracing-subscriber = "0.3.23"
+clamber-core = "0.1.6"
+
+rdkafka = { version = "0.39.0", features = ["default", "ssl"] }
+rocksdb = "0.25.0"
