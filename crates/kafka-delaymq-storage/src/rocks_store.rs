@@ -200,6 +200,7 @@ impl DelayStore for RocksDbStore {
         message_id: &str,
         expect: DelayStatus,
         next: DelayStatus,
+        now_ms: i64,
     ) -> Result<bool, Self::Error> {
         // 这里的 read-modify-write 不是原子的。原子性来自调用约定：
         // 整个 store 由单个 worker 线程串行驱动，见类型文档。
@@ -212,23 +213,33 @@ impl DelayStore for RocksDbStore {
         }
 
         stored.status = next;
-        stored.updated_at = kafka_delaymq_core::wall_clock_ms();
+        stored.updated_at = now_ms;
         self.store(&stored)?;
         Ok(true)
     }
 
-    fn set_status(&self, message_id: &str, status: DelayStatus) -> Result<(), Self::Error> {
+    fn set_status(
+        &self,
+        message_id: &str,
+        status: DelayStatus,
+        now_ms: i64,
+    ) -> Result<(), Self::Error> {
         self.mutate(message_id, |stored| {
             stored.status = status;
-            stored.updated_at = kafka_delaymq_core::wall_clock_ms();
+            stored.updated_at = now_ms;
         })
     }
 
-    fn mark_retry(&self, message_id: &str, retry_count: u32) -> Result<(), Self::Error> {
+    fn mark_retry(
+        &self,
+        message_id: &str,
+        retry_count: u32,
+        now_ms: i64,
+    ) -> Result<(), Self::Error> {
         self.mutate(message_id, |stored| {
             stored.retry_count = retry_count;
             stored.status = DelayStatus::Pending;
-            stored.updated_at = kafka_delaymq_core::wall_clock_ms();
+            stored.updated_at = now_ms;
         })
     }
 

@@ -9,11 +9,17 @@
 pub mod clock;
 pub mod memory_store;
 pub mod message;
+pub mod processor;
+pub mod scheduler;
 pub mod store;
 pub mod task;
+pub mod worker;
 
 pub use clock::{Clock, wall_clock_ms};
 pub use memory_store::{MemoryStore, MemoryStoreError};
 pub use message::{DelayMessage, DelayStatus, InvalidMessage, StoredDelayMessage};
+pub use processor::{Delivery, MessageSink, ProcessError, Processor, RetryPolicy};
+pub use scheduler::{ConfigError, PreloadStats, Scheduler, SchedulerConfig, SchedulerError};
 pub use store::{DelayStore, PutOutcome};
 pub use task::TimerTask;
+pub use worker::{StoreHandle, WorkerGone};

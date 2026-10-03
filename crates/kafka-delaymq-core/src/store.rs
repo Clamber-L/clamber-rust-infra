@@ -76,16 +76,31 @@ pub trait DelayStore: Send + Sync + 'static {
     /// 原子状态转换。返回 `false` 表示当前状态不等于 `expect`。
     ///
     /// 这是防重复投递的主要防线，见 `DelayStatus::Delivering`。
+    ///
+    /// `now_ms` 写入 `updated_at`，`Delivering` 的超时判定依赖它。时间由
+    /// 调用方注入而非实现内部取 —— 与项目其余部分一致，见
+    /// `docs/time-concepts.md`。
     fn compare_and_swap_status(
         &self,
         message_id: &str,
         expect: DelayStatus,
         next: DelayStatus,
+        now_ms: i64,
     ) -> Result<bool, Self::Error>;
 
-    fn set_status(&self, message_id: &str, status: DelayStatus) -> Result<(), Self::Error>;
+    fn set_status(
+        &self,
+        message_id: &str,
+        status: DelayStatus,
+        now_ms: i64,
+    ) -> Result<(), Self::Error>;
 
-    fn mark_retry(&self, message_id: &str, retry_count: u32) -> Result<(), Self::Error>;
+    fn mark_retry(
+        &self,
+        message_id: &str,
+        retry_count: u32,
+        now_ms: i64,
+    ) -> Result<(), Self::Error>;
 
     /// 找出卡在 `Delivering` 超过 `timeout_ms` 的消息，供 recovery 重置。
     fn scan_stale_delivering(

@@ -128,7 +128,7 @@ fn scan_due_skips_non_pending() {
     store.put(&message("pending", NOW + 1_000), NOW).unwrap();
     store.put(&message("delivering", NOW + 1_000), NOW).unwrap();
     store
-        .compare_and_swap_status("delivering", DelayStatus::Pending, DelayStatus::Delivering)
+        .compare_and_swap_status("delivering", DelayStatus::Pending, DelayStatus::Delivering, NOW)
         .unwrap();
 
     let due = store.scan_due(0, NOW + 10_000, 100).unwrap();
@@ -142,7 +142,7 @@ fn cas_succeeds_on_expected_status() {
     store.put(&message("m1", NOW), NOW).unwrap();
 
     let won = store
-        .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering)
+        .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering, NOW)
         .unwrap();
     assert!(won);
     assert_eq!(store.get("m1").unwrap().unwrap().status, DelayStatus::Delivering);
@@ -155,10 +155,10 @@ fn cas_rejects_second_claimant() {
     store.put(&message("m1", NOW), NOW).unwrap();
 
     let first = store
-        .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering)
+        .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering, NOW)
         .unwrap();
     let second = store
-        .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering)
+        .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering, NOW)
         .unwrap();
 
     assert!(first, "first claimant should win");
@@ -170,10 +170,10 @@ fn mark_retry_bumps_count_and_returns_to_pending() {
     let store = MemoryStore::new();
     store.put(&message("m1", NOW), NOW).unwrap();
     store
-        .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering)
+        .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering, NOW)
         .unwrap();
 
-    store.mark_retry("m1", 1).unwrap();
+    store.mark_retry("m1", 1, NOW).unwrap();
 
     let stored = store.get("m1").unwrap().unwrap();
     assert_eq!(stored.retry_count, 1);
@@ -189,7 +189,7 @@ fn stale_delivering_is_detected_after_timeout() {
     let store = MemoryStore::new();
     store.put(&message("m1", NOW), NOW).unwrap();
     store
-        .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering)
+        .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering, NOW)
         .unwrap();
 
     let updated_at = store.get("m1").unwrap().unwrap().updated_at;

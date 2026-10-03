@@ -235,6 +235,7 @@ dependencies = [
  "kafka-timing-wheel",
  "serde",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 
@@ -261,6 +262,7 @@ dependencies = [
  "serde",
  "tempfile",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 

@@ -53,9 +53,9 @@ fn status_changes_survive_reopen() {
         let store = RocksDbStore::open(dir.path()).unwrap();
         store.put(&message("m1", NOW), NOW).unwrap();
         store
-            .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering)
+            .compare_and_swap_status("m1", DelayStatus::Pending, DelayStatus::Delivering, NOW)
             .unwrap();
-        store.mark_retry("m1", 3).unwrap();
+        store.mark_retry("m1", 3, NOW).unwrap();
     }
 
     let store = RocksDbStore::open(dir.path()).unwrap();

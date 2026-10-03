@@ -127,6 +127,7 @@ impl DelayStore for MemoryStore {
         message_id: &str,
         expect: DelayStatus,
         next: DelayStatus,
+        now_ms: i64,
     ) -> Result<bool, Self::Error> {
         let mut inner = self.inner.write().map_err(|_| MemoryStoreError::LockPoisoned)?;
         let stored = inner
@@ -138,22 +139,32 @@ impl DelayStore for MemoryStore {
             return Ok(false);
         }
         stored.status = next;
-        stored.updated_at = crate::clock::wall_clock_ms();
+        stored.updated_at = now_ms;
         Ok(true)
     }
 
-    fn set_status(&self, message_id: &str, status: DelayStatus) -> Result<(), Self::Error> {
+    fn set_status(
+        &self,
+        message_id: &str,
+        status: DelayStatus,
+        now_ms: i64,
+    ) -> Result<(), Self::Error> {
         let mut inner = self.inner.write().map_err(|_| MemoryStoreError::LockPoisoned)?;
         let stored = inner
             .messages
             .get_mut(message_id)
             .ok_or_else(|| MemoryStoreError::NotFound(message_id.to_string()))?;
         stored.status = status;
-        stored.updated_at = crate::clock::wall_clock_ms();
+        stored.updated_at = now_ms;
         Ok(())
     }
 
-    fn mark_retry(&self, message_id: &str, retry_count: u32) -> Result<(), Self::Error> {
+    fn mark_retry(
+        &self,
+        message_id: &str,
+        retry_count: u32,
+        now_ms: i64,
+    ) -> Result<(), Self::Error> {
         let mut inner = self.inner.write().map_err(|_| MemoryStoreError::LockPoisoned)?;
         let stored = inner
             .messages
@@ -161,7 +172,7 @@ impl DelayStore for MemoryStore {
             .ok_or_else(|| MemoryStoreError::NotFound(message_id.to_string()))?;
         stored.retry_count = retry_count;
         stored.status = DelayStatus::Pending;
-        stored.updated_at = crate::clock::wall_clock_ms();
+        stored.updated_at = now_ms;
         Ok(())
     }
 
