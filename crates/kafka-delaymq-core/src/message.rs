@@ -29,6 +29,51 @@ pub struct DelayMessage {
     pub headers: Vec<(String, String)>,
 }
 
+impl DelayMessage {
+    /// 校验从外部收到的消息是否可用。
+    ///
+    /// `message_id` 由业务方生成(雪花 ID)，所以基本合法性必须在入口处
+    /// 检查 —— 它随后要充当 RocksDB 主键、幂等键与 CAS 目标，一个空串
+    /// 或非数字 ID 会一路带到存储层才暴露。
+    pub fn validate(&self) -> Result<(), InvalidMessage> {
+        if self.message_id.is_empty() {
+            return Err(InvalidMessage::EmptyMessageId);
+        }
+
+        // 雪花 ID 恒为正：1 位符号位不用 + 41 位时间戳 + 10 位机器号
+        // + 12 位序列号。解析失败或非正数说明上游生成器有问题。
+        match self.message_id.parse::<i64>() {
+            Ok(n) if n > 0 => {}
+            _ => {
+                return Err(InvalidMessage::MalformedMessageId {
+                    message_id: self.message_id.clone(),
+                });
+            }
+        }
+
+        if self.target_topic.is_empty() {
+            return Err(InvalidMessage::EmptyTargetTopic {
+                message_id: self.message_id.clone(),
+            });
+        }
+
+        Ok(())
+    }
+}
+
+/// 入口校验失败的原因。
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum InvalidMessage {
+    #[error("message_id is empty")]
+    EmptyMessageId,
+
+    #[error("message_id {message_id:?} is not a positive snowflake id")]
+    MalformedMessageId { message_id: String },
+
+    #[error("message {message_id} has an empty target_topic")]
+    EmptyTargetTopic { message_id: String },
+}
+
 /// 投递状态机。
 ///
 /// `Pending -> Delivering` 的原子转换是防重复投递的主要防线：并发的

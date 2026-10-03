@@ -1,6 +1,33 @@
 use crate::message::{DelayMessage, DelayStatus, StoredDelayMessage};
 use crate::task::TimerTask;
 
+/// `DelayStore::put` 的结果。
+///
+/// 存在三种而非两种情形，因为 `message_id` 由业务方生成 —— 同一个 ID
+/// 再次到达既可能是 Kafka 正常重投，也可能是生成方 worker_id 配重。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PutOutcome {
+    /// 新消息，首次写入。
+    Inserted,
+
+    /// 同 ID 且 payload 相同 —— Kafka 重投或改期，已覆盖。
+    /// 改期时索引已同步重建。
+    Replaced,
+
+    /// 同 ID 但 payload 不同 —— 判定为 ID 撞号，**未写入**。
+    ///
+    /// 调用方应当告警而非重试：这是上游 ID 生成器的配置问题，
+    /// 重试不会让它变好，而静默覆盖会丢掉已存在的那条消息。
+    Rejected,
+}
+
+impl PutOutcome {
+    /// 消息是否已落库(撞号被拒时为 false)。
+    pub fn is_stored(self) -> bool {
+        matches!(self, Self::Inserted | Self::Replaced)
+    }
+}
+
 /// 持久化抽象。
 ///
 /// **定义在 core 而非 storage** —— 抽象属于使用方，不属于实现方(依赖
@@ -21,7 +48,12 @@ pub trait DelayStore: Send + Sync + 'static {
 
     /// 写入消息。必须同时更新主数据与 `by_execute_at` 索引，
     /// 且两者在同一个原子批次内 —— 否则崩溃后会出现索引与数据不一致。
-    fn put(&self, message: &DelayMessage, now_ms: i64) -> Result<(), Self::Error>;
+    ///
+    /// `message_id` 由业务方生成(雪花 ID)，唯一性不由本服务保证，所以
+    /// 实现必须区分"正常重投"与"ID 撞号"：payload 相同视为重投，直接
+    /// 覆盖；payload 不同说明是两条不同的消息用了同一个 ID，必须拒绝，
+    /// 否则静默覆盖等于丢消息。判定依据见 `PutOutcome`。
+    fn put(&self, message: &DelayMessage, now_ms: i64) -> Result<PutOutcome, Self::Error>;
 
     fn get(&self, message_id: &str) -> Result<Option<StoredDelayMessage>, Self::Error>;
 

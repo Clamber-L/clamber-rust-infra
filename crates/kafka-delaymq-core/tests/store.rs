@@ -1,7 +1,7 @@
 //! `DelayStore` 的契约测试。全部针对 trait 而非具体实现，Step 4 实现
 //! `RocksDbStore` 之后同一批断言应当照样通过。
 
-use kafka_delaymq_core::{DelayMessage, DelayStatus, DelayStore, MemoryStore};
+use kafka_delaymq_core::{DelayMessage, DelayStatus, DelayStore, MemoryStore, PutOutcome};
 
 const NOW: i64 = 1_700_000_000_000;
 
@@ -238,4 +238,96 @@ fn terminal_statuses_are_classified() {
     assert!(DelayStatus::Cancelled.is_terminal());
     assert!(!DelayStatus::Pending.is_terminal());
     assert!(!DelayStatus::Delivering.is_terminal());
+}
+
+// ---------------------------------------------------------------------
+// message_id 由业务方生成(雪花 ID)，唯一性不由本服务保证。
+// put 必须区分"Kafka 重投"与"ID 撞号"，见架构文档 §15.1。
+// ---------------------------------------------------------------------
+
+#[test]
+fn first_put_reports_inserted() {
+    let store = MemoryStore::new();
+    let outcome = store.put(&message("m1", NOW + 1_000), NOW).unwrap();
+
+    assert_eq!(outcome, PutOutcome::Inserted);
+    assert!(outcome.is_stored());
+}
+
+/// Kafka 重投：同 ID 同 payload，应当覆盖而非报错。
+#[test]
+fn redelivery_with_same_payload_is_replaced() {
+    let store = MemoryStore::new();
+    store.put(&message("m1", NOW + 1_000), NOW).unwrap();
+
+    let outcome = store.put(&message("m1", NOW + 1_000), NOW + 50).unwrap();
+
+    assert_eq!(outcome, PutOutcome::Replaced);
+    assert!(store.get("m1").unwrap().is_some());
+}
+
+/// 改期：payload 不变只改 execute_at，属于正常覆盖。
+#[test]
+fn reschedule_keeps_payload_and_is_replaced() {
+    let store = MemoryStore::new();
+    store.put(&message("m1", NOW + 1_000), NOW).unwrap();
+
+    let outcome = store.put(&message("m1", NOW + 9_000), NOW).unwrap();
+    assert_eq!(outcome, PutOutcome::Replaced);
+
+    // 新 deadline 生效，且没有留下指向旧 deadline 的孤儿索引
+    let due = store.scan_due(0, NOW + 100_000, 100).unwrap();
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].execute_at, NOW + 9_000);
+}
+
+/// ID 撞号：同 ID 不同 payload。必须拒绝 —— 静默覆盖等于丢掉已存在的消息。
+#[test]
+fn colliding_id_with_different_payload_is_rejected() {
+    let store = MemoryStore::new();
+    store.put(&message("m1", NOW + 1_000), NOW).unwrap();
+
+    let mut intruder = message("m1", NOW + 2_000);
+    intruder.payload = b"a different message entirely".to_vec();
+
+    let outcome = store.put(&intruder, NOW).unwrap();
+    assert_eq!(outcome, PutOutcome::Rejected);
+    assert!(!outcome.is_stored());
+}
+
+/// 撞号被拒后，原消息必须完好无损 —— 这正是拒绝的目的。
+#[test]
+fn rejected_collision_leaves_original_intact() {
+    let store = MemoryStore::new();
+    let original = message("m1", NOW + 1_000);
+    store.put(&original, NOW).unwrap();
+
+    let mut intruder = message("m1", NOW + 2_000);
+    intruder.payload = b"intruder".to_vec();
+    store.put(&intruder, NOW).unwrap();
+
+    let stored = store.get("m1").unwrap().unwrap();
+    assert_eq!(stored.message, original, "original was overwritten");
+
+    // 索引也不该被动过
+    let due = store.scan_due(0, NOW + 100_000, 100).unwrap();
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].execute_at, NOW + 1_000);
+}
+
+/// 不同 ID 携带相同 payload 是完全正常的，不该被当成撞号。
+#[test]
+fn distinct_ids_with_identical_payload_both_stored() {
+    let store = MemoryStore::new();
+
+    assert_eq!(
+        store.put(&message("m1", NOW + 1_000), NOW).unwrap(),
+        PutOutcome::Inserted
+    );
+    assert_eq!(
+        store.put(&message("m2", NOW + 1_000), NOW).unwrap(),
+        PutOutcome::Inserted
+    );
+
+    assert_eq!(store.scan_due(0, NOW + 100_000, 100).unwrap().len(), 2);
 }

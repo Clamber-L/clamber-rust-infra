@@ -8,9 +8,11 @@ license.workspace = true
 # Implements DelayStore defined in core. See docs §23.
 kafka-delaymq-core = { workspace = true }
 
-anyhow = { workspace = true }
+bincode = { workspace = true }
 rocksdb = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.23.0"

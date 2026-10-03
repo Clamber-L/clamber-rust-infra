@@ -14,6 +14,6 @@ pub mod task;
 
 pub use clock::{Clock, wall_clock_ms};
 pub use memory_store::{MemoryStore, MemoryStoreError};
-pub use message::{DelayMessage, DelayStatus, StoredDelayMessage};
-pub use store::DelayStore;
+pub use message::{DelayMessage, DelayStatus, InvalidMessage, StoredDelayMessage};
+pub use store::{DelayStore, PutOutcome};
 pub use task::TimerTask;

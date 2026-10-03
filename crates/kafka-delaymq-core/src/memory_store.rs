@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::RwLock;
 
 use crate::message::{DelayMessage, DelayStatus, StoredDelayMessage};
-use crate::store::DelayStore;
+use crate::store::{DelayStore, PutOutcome};
 use crate::task::TimerTask;
 
 /// 内存实现，用于测试与本地验证。
@@ -55,21 +55,31 @@ impl MemoryStore {
 impl DelayStore for MemoryStore {
     type Error = MemoryStoreError;
 
-    fn put(&self, message: &DelayMessage, now_ms: i64) -> Result<(), Self::Error> {
+    fn put(&self, message: &DelayMessage, now_ms: i64) -> Result<PutOutcome, Self::Error> {
         let mut inner = self.inner.write().map_err(|_| MemoryStoreError::LockPoisoned)?;
 
-        // 覆盖写时先清掉旧索引，否则 execute_at 变更会留下孤儿索引项。
-        if let Some(old) = inner.messages.get(&message.message_id) {
-            let old_key = (old.message.execute_at, message.message_id.clone());
-            inner.by_due.remove(&old_key);
-        }
+        let outcome = match inner.messages.get(&message.message_id) {
+            None => PutOutcome::Inserted,
+
+            // payload 相同 → Kafka 重投或改期，允许覆盖。
+            Some(existing) if existing.message.payload == message.payload => {
+                // 必须先清旧索引：execute_at 变了会留下指向同一 ID 的
+                // 孤儿索引项，使 scan_due 返回同一任务两次。
+                let old_key = (existing.message.execute_at, message.message_id.clone());
+                inner.by_due.remove(&old_key);
+                PutOutcome::Replaced
+            }
+
+            // payload 不同 → ID 撞号。不写入，交给调用方告警。
+            Some(_) => return Ok(PutOutcome::Rejected),
+        };
 
         let stored = StoredDelayMessage::new_pending(message.clone(), now_ms);
         inner
             .by_due
             .insert((message.execute_at, message.message_id.clone()), ());
         inner.messages.insert(message.message_id.clone(), stored);
-        Ok(())
+        Ok(outcome)
     }
 
     fn get(&self, message_id: &str) -> Result<Option<StoredDelayMessage>, Self::Error> {
