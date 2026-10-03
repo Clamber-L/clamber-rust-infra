@@ -9,9 +9,9 @@ license.workspace = true
 # core, not the other way round. See docs §23.
 kafka-timing-wheel = { workspace = true }
 
-anyhow = { workspace = true }
-clamber-core = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+kafka-timing-wheel = { workspace = true }

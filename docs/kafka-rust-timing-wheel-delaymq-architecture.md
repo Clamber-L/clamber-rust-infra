@@ -1227,15 +1227,84 @@ consumer 和 tick 推进)全部停摆。
     ✓ 改动小
     ✗ 每次调用有任务切换开销
 
-方案 2  同步 trait + 专用线程池        ← 推荐
+方案 2  同步 trait + 单线程 store worker    ← 已采用
     DelayStore 定义为同步 trait
-    由专门的 storage worker 线程执行
+    由一个专门的 storage worker 线程串行执行
     通过 channel 与 async 世界通信
     ✓ 便于批量合并操作，开销可控
-    ✗ 需要自己管理线程池与 channel
+    ✓ 串行化顺带解决 CAS，见 §16.3
+    ✗ 需要自己管理线程与 channel
 ```
 
-无论哪种，§18 的 trait 签名都要相应调整。
+§18 的 trait 签名已按方案 2 定为同步。
+
+------------------------------------------------------------------------
+
+## 16.3 单线程 worker 顺带解决了 CAS
+
+RocksDB **没有原生的 compare-and-swap**。§12 依赖的
+`compare_and_swap_status` 本质是一次 read-modify-write，裸写会有竞态：
+
+```text
+task A  read status = Pending
+task B  read status = Pending
+task A  write Delivering
+task B  write Delivering     ← 两者都认为自己抢到了投递权
+```
+
+三种解法：
+
+```text
+A  单线程 store worker          ← 已采用
+   所有存储操作在一个线程上串行
+   read-modify-write 天然原子，无需额外机制
+
+B  按 message_id 分片加锁
+   允许多线程并发
+   需要自己管理锁，且 WriteBatch 跨分片时复杂
+
+C  TransactionDB
+   RocksDB 原生事务，支持乐观/悲观并发
+   API 更重，且事务冲突仍要重试
+```
+
+采用方案 A 的理由不只是简单：延迟消息的存储访问是**写多读少、且天然
+批量**的（预加载一次扫一批、投递成功一次删一条）。单线程 worker 可以把
+多次 `put` / `delete` 合进一个 `WriteBatch` 再落盘，吞吐往往高于多线程
+各自提交小批次 —— RocksDB 的瓶颈在 fsync 与 compaction，不在 CPU。
+
+落地形态：
+
+```rust
+// DelayStore 的实现持有 channel 发送端，方法内发命令并等回执。
+// 真正的 RocksDB 调用全部发生在 worker 线程上。
+enum StoreCommand {
+    Put { message: DelayMessage, now_ms: i64, reply: oneshot::Sender<Result<()>> },
+    Cas  { message_id: String, expect: DelayStatus, next: DelayStatus,
+           reply: oneshot::Sender<Result<bool>> },
+    ScanDue { from: i64, to: i64, limit: usize,
+              reply: oneshot::Sender<Result<Vec<TimerTask>>> },
+    // ...
+}
+```
+
+两个必须注意的点：
+
+```text
+1. worker 线程是串行瓶颈
+   单个 RocksDB 实例的写入本来也要走同一个 WAL，
+   但大 range scan 会阻塞该线程上的其他命令 ——
+   scan_due 的 limit 因此不只是防 OOM，也是防队头阻塞
+
+2. worker panic 必须向上传播
+   worker 挂掉后所有 channel 发送都会失败，
+   服务应当整体退出而不是静默降级：
+   存储不可用时继续消费 Kafka 只会丢消息
+```
+
+若将来单线程确实成为瓶颈，升级路径是**按 partition 分片**：每个 Kafka
+partition 一个 RocksDB 实例 + 一个 worker。这与 §20 的 ownership
+模型天然对齐，比按 `message_id` 分片更自然。
 
 ------------------------------------------------------------------------
 
@@ -2380,6 +2449,28 @@ Kafka + Timer
 
 # 32. 待决事项
 
+## 已定
+
+``` text
+§16.2  存储并发模型
+       同步 trait + 单线程 store worker
+       CAS 随之解决，见 §16.3
+
+§23    DelayStore trait 归属
+       定义在 core，storage 反向依赖 core(依赖倒置)
+
+§7     tick 粒度
+       1 秒。抖动只偏晚不偏早，最多晚一个 tick
+
+§5     payload 策略
+       方案 A 自包含。source_partition/offset 仅作坐标
+
+§22    cancel 实现
+       tombstone 式，标记 Cancelled 而非操作时间轮
+```
+
+## 待定
+
 动手前需要确认的问题，按影响范围排序。
 
 ``` text
@@ -2388,16 +2479,22 @@ Kafka + Timer
    生产部署的最大延迟是多少 → 决定 retention 能否覆盖
 
 2. §4.2 horizon 取值
-   取决于业务的到期速率分布
-   需要先有真实流量特征才能定
+   暂按 5 分钟写进测试(horizon_fits_within_one_revolution)
+   小于单圈 8.5 分钟，使 rounds 恒为 0
+   真实流量特征明确后再调
 
-3. §5 payload 大小上限
+3. §15 message_id 生成方案
+   倾向 ULID(26 字符、字典序含创建时间、比 UUID 省空间)
+   Step 6 的 consumer 需要它
+   注意：ULID 的时间前缀是创建时间，不能替代 §16.1 的时间索引
+
+4. §5 payload 大小上限
    单条超过多大就必须外置到对象存储
 
-4. §16 是否保留投递历史
+5. §16 是否保留投递历史
    影响 Delivered 状态与 §27 的查询接口
 
-5. §15 business-topic 的 Kafka Key
+6. §15 business-topic 的 Kafka Key
    用 message_id 还是业务键 → 取决于下游是否依赖分区有序
 ```
 

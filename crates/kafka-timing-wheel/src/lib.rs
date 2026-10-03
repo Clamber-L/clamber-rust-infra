@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
-pub mod slot;
 pub mod wheel;
 
 pub use error::WheelError;
