@@ -1,7 +1,8 @@
+#![forbid(unsafe_code)]
+
 pub mod error;
-pub mod level;
 pub mod slot;
-pub mod task;
 pub mod wheel;
 
 pub use error::WheelError;
+pub use wheel::{DEFAULT_TICK_MS, DEFAULT_WHEEL_SIZE, TimingWheel};

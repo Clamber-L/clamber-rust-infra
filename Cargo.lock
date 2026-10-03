@@ -701,8 +701,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clamber-core",
- "kafka-delaymq-kafka",
- "kafka-delaymq-storage",
  "kafka-timing-wheel",
  "serde",
  "thiserror 2.0.21",
@@ -715,6 +713,7 @@ name = "kafka-delaymq-kafka"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "kafka-delaymq-core",
  "rdkafka",
  "serde",
  "thiserror 2.0.21",
@@ -727,6 +726,7 @@ name = "kafka-delaymq-storage"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "kafka-delaymq-core",
  "rocksdb",
  "serde",
  "thiserror 2.0.21",
@@ -738,10 +738,7 @@ dependencies = [
 name = "kafka-timing-wheel"
 version = "0.1.0"
 dependencies = [
- "serde",
  "thiserror 2.0.21",
- "tokio",
- "tracing",
 ]
 
 [[package]]

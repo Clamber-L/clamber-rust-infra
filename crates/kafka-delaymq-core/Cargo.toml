@@ -5,8 +5,8 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
-kafka-delaymq-kafka = { workspace = true }
-kafka-delaymq-storage = { workspace = true }
+# Core defines the DelayStore trait and domain model; storage/kafka depend on
+# core, not the other way round. See docs §23.
 kafka-timing-wheel = { workspace = true }
 
 anyhow = { workspace = true }

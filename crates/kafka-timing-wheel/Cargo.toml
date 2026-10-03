@@ -5,7 +5,6 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
-serde = { workspace = true }
+# Pure synchronous data structure: time is injected via advance_to, so the
+# wheel needs no runtime of its own. See docs §7.2.
 thiserror = { workspace = true }
-tokio = { workspace = true }
-tracing = { workspace = true }

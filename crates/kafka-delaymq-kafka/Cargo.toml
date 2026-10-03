@@ -5,6 +5,9 @@ version.workspace = true
 license.workspace = true
 
 [dependencies]
+# Kafka adapter over core's domain model. See docs §23.
+kafka-delaymq-core = { workspace = true }
+
 anyhow = { workspace = true }
 rdkafka = { workspace = true }
 serde = { workspace = true }
