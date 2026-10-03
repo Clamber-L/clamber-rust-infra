@@ -190,6 +190,37 @@ impl<E: Send + 'static> StoreHandle<E> {
         self.thread.is_finished()
     }
 
+    /// 关闭 worker 并等它退出。
+    ///
+    /// 必须在进程退出前调用：worker 持有存储实例(RocksDB)，直接退出
+    /// 会让它的析构与 LOCK 文件清理来不及跑。
+    ///
+    /// 本方法消费 `self` 并丢掉发送端，worker 的接收循环随之结束。
+    /// 若仍有其他克隆存活则等不到退出 —— 此时只能放弃等待并记录，
+    /// 避免关停路径被挂住。
+    pub async fn shutdown(self) {
+        let Self { tx, thread } = self;
+        drop(tx);
+
+        // 只有最后一个克隆能拿到线程所有权并 join。
+        match Arc::try_unwrap(thread) {
+            Ok(handle) => {
+                // join 是阻塞的，挪到 blocking 池避免占住 async worker。
+                if tokio::task::spawn_blocking(move || handle.join())
+                    .await
+                    .is_err()
+                {
+                    tracing::warn!("store worker join task failed");
+                }
+            }
+            Err(_) => {
+                tracing::warn!(
+                    "other store handles are still alive; not waiting for the worker"
+                );
+            }
+        }
+    }
+
     async fn dispatch<T>(
         &self,
         make: impl FnOnce(oneshot::Sender<Result<T, E>>) -> Command<E>,

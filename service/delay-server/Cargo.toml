@@ -1,0 +1,16 @@
+[package]
+name = "delay-server"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+kafka-delaymq-core = { workspace = true }
+kafka-delaymq-kafka = { workspace = true }
+kafka-delaymq-storage = { workspace = true }
+
+anyhow = { workspace = true }
+clamber-core = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }

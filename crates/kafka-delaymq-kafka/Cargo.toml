@@ -8,9 +8,12 @@ license.workspace = true
 # Kafka adapter over core's domain model. See docs §23.
 kafka-delaymq-core = { workspace = true }
 
-anyhow = { workspace = true }
+bincode = { workspace = true }
 rdkafka = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

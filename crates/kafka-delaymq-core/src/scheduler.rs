@@ -253,6 +253,15 @@ impl<S: DelayStore> Scheduler<S> {
         Ok(stats)
     }
 
+    /// 把任务放回时间轮。
+    ///
+    /// 用于 [`crate::Delivery::Rescheduled`]：投递前的二次校验发现尚未
+    /// 到期(时间轮由单调时钟推进，与 `execute_at` 的 wall clock 会漂移)，
+    /// 任务需要重新入轮而不是丢掉。
+    pub fn reschedule(&mut self, task: TimerTask) -> Result<(), WheelError> {
+        self.wheel.schedule(task.execute_at, task)
+    }
+
     /// 推进时间轮，返回本次到期的任务。
     ///
     /// 时间由参数注入，补偿逻辑在轮内部 —— 迟到多久都能一次追上。
